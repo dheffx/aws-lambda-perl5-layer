@@ -10,7 +10,14 @@ my $task_root;
 BEGIN {
     $task_root = $ENV{'LAMBDA_TASK_ROOT'};
 }
-use lib "${task_root}/local/lib/perl5"; # for vendoring
+
+use lib (
+  "/opt/bundle/lib",
+  "/opt/local/lib/perl5", # for additional package layers
+  "${task_root}/local/lib/perl5" # for vendoring
+); 
+
+use Lambda::Function::Context;
 
 my ($handler, $func) = split(/[.]/, $ENV{'_HANDLER'}, 2);
 require "${task_root}/${handler}.pl";
@@ -31,8 +38,10 @@ while (1) {
         die 'cannot take the Lambda request ID';
     }
 
+    my $context = Lambda::Function::Context->new($next_event_resp->{headers});
+
     my $payload = decode_json($next_event_resp->{content});
-    my $result = $f->($payload);
+    my $result = $f->($payload, $context);
 
     my $exec_resp_url = "http://${aws_lambda_runtime_api}/2018-06-01/runtime/invocation/$request_id/response";
     my $resp = $http->post($exec_resp_url, {
@@ -45,4 +54,3 @@ while (1) {
 }
 
 __END__
-

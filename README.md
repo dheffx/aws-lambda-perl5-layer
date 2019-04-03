@@ -38,7 +38,7 @@ If you want to build a layer and use that instead of provided layer, please foll
 #### How to build a layer
 
 ```
-$ make build-docker-container PERL_VERSION=x.x.x CONTAINER_TAG=x.x
+$ make build-docker-image PERL_VERSION=x.x.x CONTAINER_TAG=x.x
 $ make build CONTAINER_TAG=x.x
 ```
 
