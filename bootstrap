@@ -3,8 +3,17 @@
 use strict;
 use warnings;
 use utf8;
-use HTTP::Tiny;
-use JSON::XS qw/decode_json encode_json/;
+use JSON::XS qw/decode_json/;
+
+=pod
+
+=head1 bootstrap
+
+AWS Lambda Layer runtime for Perl
+
+https://docs.aws.amazon.com/lambda/latest/dg/runtimes-custom.html?shortFooter=true
+
+=cut
 
 my $task_root;
 BEGIN {
@@ -17,40 +26,95 @@ use lib (
   "${task_root}/local/lib/perl5" # for vendoring
 ); 
 
-use Lambda::Function::Context;
+use Lambda::Runtime::API;
+use Lambda::Runtime::Context;
 
-my ($handler, $func) = split(/[.]/, $ENV{'_HANDLER'}, 2);
-require "${task_root}/${handler}.pl";
-my $f = \&$func;
+=head2 runtime
 
-my $http = HTTP::Tiny->new;
-my $aws_lambda_runtime_api = $ENV{'AWS_LAMBDA_RUNTIME_API'} // die '$AWS_LAMBDA_RUNTIME_API is not found';
-my $next_event_url = "http://${aws_lambda_runtime_api}/2018-06-01/runtime/invocation/next";
+Main function for bootstrap.
 
-while (1) {
-    my $next_event_resp = $http->get($next_event_url);
-    unless ($next_event_resp->{success}) {
-        die "failed to retrieve the next event: $next_event_resp->{status} $next_event_resp->{reason}";
-    }
+Initialize the API, and load the function.
 
-    my $request_id = $next_event_resp->{headers}->{'lambda-runtime-aws-request-id'};
-    unless ($request_id) {
-        die 'cannot take the Lambda request ID';
-    }
+If there is an error starting up, post an initialization error,
+otherwise run the event loop
 
-    my $context = Lambda::Function::Context->new($next_event_resp->{headers});
+=cut
 
-    my $payload = decode_json($next_event_resp->{content});
-    my $result = $f->($payload, $context);
+sub runtime {
+  my $aws_lambda_runtime_api = $ENV{'AWS_LAMBDA_RUNTIME_API'} // die '$AWS_LAMBDA_RUNTIME_API is not found';
+  my $api = Lambda::Runtime::API->new($aws_lambda_runtime_api);
 
-    my $exec_resp_url = "http://${aws_lambda_runtime_api}/2018-06-01/runtime/invocation/$request_id/response";
-    my $resp = $http->post($exec_resp_url, {
-        content => encode_json($result),
-    });
-
-    unless ($resp->{success}) {
-        die "failed to response of execution: $resp->{status} $resp->{reason}";
-    }
+  my $func;
+  eval { $func = load_function(); };
+  if ($@) {
+    $api->initialization_error($@);
+  } else {
+    event_loop($api, $func);
+  }
 }
+
+=head2 load_function
+
+Parse the _HANDLE environment variable and load function handler
+
+Return a reference to the function
+
+=cut
+sub load_function {
+  my ($handler, $func) = split(/[.]/, $ENV{'_HANDLER'}, 2);
+  require "${task_root}/${handler}.pl";
+  my $f = \&$func;
+  return $f;
+}
+
+=head2 event_loop
+
+Start an infinite loop that requests the next event
+When an event is received, pass it and the function to the event handler
+
+If the handler returns an error, post an invocation error to the API
+Otherwise post the response context to the API
+
+=cut
+
+sub event_loop {
+  my ($api, $func) = @_;
+  while (1) {
+    my $next_event = $api->next();
+    my $request_id = $next_event->{headers}->{'lambda-runtime-aws-request-id'};
+    unless ($request_id) {
+      die 'cannot take the Lambda request ID';
+    }
+    my $result;
+    eval {
+      $result = handle_event($next_event, $func);
+    };
+    if ($@) {
+      $api->invocation_error($request_id);
+    } else {
+      $api->respond($request_id, $result);
+    }
+  }
+}
+
+=head2 handle_event
+
+Initialize a Lambda::Function::Context instance from the headers,
+and decode the event content.
+
+Execute the function with the payload and context and return the response
+
+=cut
+
+sub handle_event {
+  my ($event, $func) = @_;
+
+  my $context = Lambda::Runtime::Context->new($event->{headers});
+  my $payload = decode_json($event->{content});
+
+  return $func->($payload, $context);
+}
+
+runtime();
 
 __END__

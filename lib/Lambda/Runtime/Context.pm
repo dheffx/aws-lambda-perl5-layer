@@ -1,5 +1,18 @@
-package Lambda::Function::Context;
+package Lambda::Runtime::Context;
 use JSON::XS qw/decode_json/;
+use Time::HiRes qw/gettimeofday/;
+
+=pod
+
+=head1 Lambda::Runtime::Context
+
+A quick implementation of https://docs.aws.amazon.com/lambda/latest/dg/java-context-object.html in Perl
+
+=head2 new
+
+Initialize the class using the env vars and input headers 
+
+=cut
 
 sub new {
   my ($class, $headers) = @_;
@@ -20,10 +33,26 @@ sub new {
   return $self;
 }
 
+=head2 get_remaining_time_in_millis
+
+Return the amount of milliseconds remaining until the function times out
+
+=cut
+
 sub get_remaining_time_in_millis {
   my $self = shift;
-  return $self->deadline_ms - time;
+  my ($seconds, $micro) = gettimeofday();
+  my $ms = $micro + $seconds * 1000;
+  return $self->deadline_ms - $ms;
 }
+
+=head2 _set_decoded_if_exists
+
+Given a key and value, 
+If the value is truthy, it will decode the value as json
+and set it on the object with the key
+
+=cut
 
 sub _set_decoded_if_exists {
   my ($self, $key, $val) = @_;
