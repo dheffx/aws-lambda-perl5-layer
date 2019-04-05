@@ -47,7 +47,7 @@ sub runtime {
   my $func;
   eval { $func = load_function(); };
   if ($@) {
-    $api->initialization_error($@);
+    $api->initialization_error('FunctionLoadFailed', $@);
   } else {
     event_loop($api, $func);
   }
@@ -90,7 +90,7 @@ sub event_loop {
       $result = handle_event($next_event, $func);
     };
     if ($@) {
-      $api->invocation_error($request_id);
+      $api->invocation_error($request_id, 'FunctionExecutionFailed', $@);
     } else {
       $api->respond($request_id, $result);
     }
