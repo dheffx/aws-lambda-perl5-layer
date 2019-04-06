@@ -48,7 +48,7 @@ Otherwise return response
 sub next {
   my $self = shift;
   my $resp = $self->{http}->get($self->url('invocation/next'));
-  _die_unless_success('retrieve the next event', $resp);
+  _die_unless_success($resp, 'retrieve the next event');
   return $resp;
 }
 
@@ -65,7 +65,7 @@ sub respond {
   my $resp = $self->{http}->post($self->url("invocation/$request_id/response"), {
     content => encode_json($result),
   });
-  _die_unless_success('response for execution', $resp);
+  _die_unless_success($resp, 'response for execution');
 }
 
 =head2 initialization_error
@@ -107,10 +107,10 @@ sub error {
       'errorType' => $type
     })
   );
-  _die_unless_success('post error for event', $resp);
+  _die_unless_success($resp, 'post error for event');
 }
 
-=head2 _die_resp
+=head2 _die_unless_success
 
 Die with a message formatted with response status and reason
 
