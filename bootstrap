@@ -85,6 +85,8 @@ sub event_loop {
     unless ($request_id) {
       die 'cannot take the Lambda request ID';
     }
+    $ENV{'_X_AMZN_TRACE_ID'} = $next_event->{headers}->{'lambda-runtime-trace-id'};
+
     my $result;
     eval {
       $result = handle_event($next_event, $func);
